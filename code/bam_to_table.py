@@ -3,7 +3,7 @@ from bcbio.bam import open_samfile
 import pysam
 
 
-OUT_HEADER = ["id", "barcode", "eid", "species", "subtype", "mismatch", "mapq"]
+OUT_HEADER = ["id", "barcode", "eid", "species", "subtype", "mismatch", "mapq", "as", "xs"]
 
 
 if __name__ == "__main__":
@@ -31,5 +31,14 @@ if __name__ == "__main__":
                 mismatch = read.opt("NM")
             except KeyError:
                 mismatch = 0
-            out_line = map(str, [number, barcode, eid, species, subtype, mismatch, mapq])
+            try:
+                as = read.opt("AS")
+            except KeyError:
+                as = 0
+            try:
+                xs = read.opt("XS")
+            except KeyError:
+                xs = 0
+            out_line = map(str, [number, barcode, eid, species, subtype, mismatch,
+                                 mapq, as, xs])
             print "\t".join(out_line)
