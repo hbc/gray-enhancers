@@ -233,12 +233,14 @@ Some enhancer sequences don't have a best hit. Here are the enhancer sequences t
 enhancer_fn = "../metadata/enhancer.tsv"
 enhancers = read.table(enhancer_fn, header=TRUE, stringsAsFactors=FALSE)
 enhancers$seen = enhancers$eid %in% best_set$eid
+nmissing = nrow(subset(enhancers, !seen))
+nseen = nrow(subset(enhancers, seen))
 out_table = data.frame(table(enhancers$seen))
 colnames(out_table) = c("seen", "count")
 kable(out_table, format="html")
 ```
 
-Out of `r nrow(enhancers)` there are `r nrow(missing_eid)` missing and `r nrow(seen_eid)` seen
+Out of `r nrow(enhancers)` there are `r nmissing` missing and `r nseen` seen
 enhancers. Here is a breakdown by type, we are missing around 13% of both the endogenous
 and Sliding subtypes across both the human and the mouse.
 

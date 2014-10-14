@@ -1115,6 +1115,8 @@ ggplot(reads_per_barcode, aes(count)) + geom_histogram() + scale_x_sqrt() +
 <pre style=""><code class="source r">enhancer_fn = "../metadata/enhancer.tsv"
 enhancers = read.table(enhancer_fn, header = TRUE, stringsAsFactors = FALSE)
 enhancers$seen = enhancers$eid %in% best_set$eid
+nmissing = nrow(subset(enhancers, !seen))
+nseen = nrow(subset(enhancers, seen))
 out_table = data.frame(table(enhancers$seen))
 colnames(out_table) = c("seen", "count")
 kable(out_table, format = "html")</code></pre>
@@ -1537,8 +1539,9 @@ ggplot(best_matches, aes(as.factor(mismatch))) + geom_histogram() + xlab("mismat
 <button class="source R toggle btn btn-xs btn-primary">
 <span class="glyphicon glyphicon-chevron-down"></span> R source
 </button>
-<pre style=""><code class="source r">write.table(best_matches, file = "best_matches.csv", quote = FALSE, sep = ",", 
-    col.names = TRUE, row.names = FALSE)</code></pre>
+<pre style=""><code class="source r">m = merge(best_matches, enhancers, by = c("eid", "species", "subtype"))
+write.table(m, file = "best_matches.csv", quote = FALSE, sep = ",", col.names = TRUE, 
+    row.names = FALSE)</code></pre>
 </div>
 </div>
 </div>
