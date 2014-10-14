@@ -259,6 +259,9 @@ ggplot(best_matches, aes(as.factor(mismatch))) + geom_histogram() +
   xlab("mismatches") +
   theme_bw(base_size=12, base_family="Gill Sans") +
   theme(panel.grid.major = element_line(size = .5, color = "grey"))
-write.table(best_matches, file="best_matches.csv", quote=FALSE, sep=",",
+m = merge(best_matches, enhancers, by=c("eid", "species", "subtype"))
+write.table(m, file="best_matches.csv", quote=FALSE, sep=",",
   col.names=TRUE, row.names=FALSE)
 ```
+
+
