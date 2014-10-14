@@ -9,6 +9,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     header = ["eid", "species", "subtype", "sequence"]
+    print "\t".join(header)
 
     with open(args.fasta) as in_handle:
         for line in in_handle:
