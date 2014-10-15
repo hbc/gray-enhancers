@@ -1,0 +1,264 @@
+---
+output:
+  knitrBootstrap::bootstrap_document:
+    theme: readable
+    highlight: zenburn
+    theme.chooser: TRUE
+    highlight.chooser: TRUE
+  html_document:
+    toc: true
+    highlight: zenburn
+---
+
+```{r setup, echo=FALSE}
+knitr::opts_chunk$set(tidy=TRUE, highlight=TRUE, dev="png",
+               cache=TRUE, highlight=TRUE, autodep=TRUE, warning=FALSE, error=FALSE,
+               message=FALSE, prompt=TRUE, comment='', fig.cap='')
+```
+
+## Background information
+This project is from Jesse
+Gray's lab, they are interested in looking at the composition of the enhancer sequences they had synthesized and stuck into some viral vectors; there are several subsets of enhancers, some from mouse and human and the mouse enhancers have several positive and negative controls. The enhancer sequences we barcoded with a 16mer and they are interested in looking at what the barcode distribution looks like as well.
+
+Most of the enhancer sequences are ~ 140mers in a sliding window across ~ 600 full length enhancer
+sequences. We don't have the full sequences available yet but they are floating around
+somewhere. There are about ~ 12k enhancer fragments that were synthesized.
+
+As a first iteration, we did something super simple to get to this
+point, we took the enhancer fragments and made a bwa database, then
+aligned the reads to those. Before aligning the reads we stuck the
+barcode for each read in the read name, so we could figure out which
+barcode was associated with an alignment. Then we parsed the alignment
+file to dump which enhancer sequence it aligned to, along with the
+barcode that was used and some numbers about mapping quality and
+number of mismatches. The code to do all of this, and this report, is up on github [here](https://github.com/hbc/gray-enhancers).
+
+```{r read-data}
+require(ggplot2)
+library(knitr)
+library(plyr)
+library(dplyr)
+in_file = "../tsv/TN03_S1_L001_R1_001.enhancer.tsv"
+dat = read.table(in_file, header=TRUE, sep="\t")
+# remove the reads which did not align to an enhancer
+dat = tbl_df(dat[!is.na(dat$eid),])
+
+nreads = nrow(dat)
+unique_barcodes = unique(dat$barcode)
+nunique_barcodes = length(unique_barcodes)
+unique_reads = unique(dat[, c("barcode", "eid")])
+```
+
+There are `r nreads` total reads, with `r nrow(unique_reads)` unique reads. By
+unique reads we mean reads that do not have the same barcode and map best to the
+same enhancer sequence. Of the `r nrow(unique_reads)` there are `r length(unique(unique_reads$barcode))` unique barcodes represented. Most barcodes were seen just once, but there is a small
+set that were seen hundreds of times:
+
+```{r depth-per-barcode}
+sequencing_depth = dat %>% group_by(barcode, eid) %>% summarise(count=n())
+ggplot(sequencing_depth, aes(count)) + geom_histogram() + scale_x_log10() +
+  theme_bw(base_size=12, base_family="Gill Sans") +
+  theme(panel.grid.major = element_line(size = .5, color = "grey"))
+```
+
+We'll use only the unique reads, and choose the
+read with the best mapping quality for each non-unique read.
+
+```{r best-set}
+best_set = tbl_df(dat) %>% group_by(barcode, eid) %>% filter(mapq == max(mapq)) %>% distinct()
+save(best_set, file="best_set.RData")
+barcodes = best_set$barcode
+```
+
+The first thing to look at is the distribution of barcodes. Below is a plot of the
+theoretical distribution of edit distance between a random barcode and the other
+barcodes if we assume we are equally likely to use and sequence a barcode.
+
+```{r theoretical-barcode-distribution-plot}
+edit_distance = function(i) {
+  return(i^3 * factorial(16) / (factorial(i) * factorial(16-i)))
+}
+
+edit_table = function(seq, sequences) {
+  table(unlist(lapply(sequences, function(x) adist(seq, x))))
+}
+
+tdistances = unlist(Map(edit_distance, 0:16))
+tdistances = tdistances / sum(tdistances)
+qplot(factor(0:16), tdistances, geom="bar", stat="identity") +
+  xlab("edit distance") + ylab("") + 
+  ggtitle("Theoretical distribution of edit distances for 16 mers") +
+  theme_bw(base_size=12, base_family="Gill Sans") +
+  theme(panel.grid.major = element_line(size = .5, color = "grey"))
+```
+
+Below is the empirical distribution of a barcode we only had one read of evidence for:
+
+```{r empirical-barcode-distribution-plot}
+one_barcode = sequencing_depth[sequencing_depth$count == 1,][1,]$barcode
+
+distances = table(unlist(lapply(barcodes, function(x) adist(one_barcode, x))))
+distances = distances / sum(distances)
+m = merge(data.frame(distances), data.frame(levels=factor(0:16)),
+    by.x="Var1", by.y="levels", all=TRUE)
+m[is.na(m)] = 0
+colnames(m) = c("distance", "count")
+m$distance = as.factor(as.numeric(as.character(m$distance)))
+m = m[order(m$distance),]
+```
+
+```{r edit-distance-plot}
+qplot(factor(0:16), m$count, geom='bar', stat='identity') + 
+  xlab("edit distance") + ylab("") + 
+  ggtitle("Empirical edit distance distribution of unique barcodes.") +
+  theme_bw(base_size=12, base_family="Gill Sans") +
+  theme(panel.grid.major = element_line(size = .5, color = "grey"))
+```
+
+Here are the differences between the theoretical and empirical distributions of
+barcode edit distances for a barcode with only one read of evidence:
+
+```{r tdistances-single-count-plot}
+qplot(factor(0:16), log2((tdistances + 0.01)/(m$count + 0.01)), geom="bar", stat="identity") +
+  ylab("log2(theoretical/emperical)") +
+  xlab("") +
+  theme_bw(base_size=12, base_family="Gill Sans") +
+  theme(panel.grid.major = element_line(size = .5, color = "grey"))
+```
+
+Barcode and enhancers that were sequenced multiple times might have a different distribution,
+due to errors in the barcode. If this was true we'd expect an enrichment for edit distances
+1 away from a barcode. We could concievably count the same barcode twice if we confuse
+a barcode with a sequencing error for a unique barcode.
+
+```{r multi-barcode-plot}
+multi_barcode = as.character(sequencing_depth[which.max(sequencing_depth$count),]$barcode)
+distances = table(unlist(lapply(barcodes, function(x) adist(multi_barcode, x))))
+distances = distances / sum(distances)
+m = merge(data.frame(distances), data.frame(levels=factor(0:16)),
+    by.x="Var1", by.y="levels", all=TRUE)
+m[is.na(m)] = 0
+colnames(m) = c("distance", "count")
+m$distance = as.factor(as.numeric(as.character(m$distance)))
+m = m[order(m$distance),]
+
+qplot(factor(0:16), m$count, geom='bar', stat='identity') + 
+  xlab("edit distance") + ylab("") + 
+  ggtitle("Empirical edit distance distribution of unique barcodes.") +
+  theme_bw(base_size=12, base_family="Gill Sans") +
+  theme(panel.grid.major = element_line(size = .5, color = "grey"))
+```
+
+```{r tdistance-plot}
+qplot(factor(0:16), log2((tdistances + 0.01)/(m$count + 0.01)), geom="bar", stat="identity") +
+  ylab("log2(theoretical/emperical)") +
+  xlab("") +
+  theme_bw(base_size=12, base_family="Gill Sans") +
+  theme(panel.grid.major = element_line(size = .5, color = "grey"))
+```
+
+For the MiSeq, the published rate
+is around 0.4% per base, so for these 16 mers we should be expecting
+about 7% of the barcodes to have a single error.
+I'm also surprised that the barcodes from IDT really do seem to be distributed somewhat evenly throughout all possible barcodes. It is awesome being wrong sometimes.
+
+
+Below is a plot of the number of times each enhancer is seen with a
+unique barcode. Some enhancers are represented much more than others.
+
+```{r reads-per-eid-plot}
+reads_per_eid = best_set %>% group_by(eid) %>% summarise(count=n())
+summary(reads_per_eid$count)
+
+ggplot(reads_per_eid, aes(count)) + geom_histogram() + scale_x_sqrt() +
+  xlab("# of enhancers with this many unique barcodes") +
+  ylab("# of unique barcodes") + 
+  theme_bw(base_size=12, base_family="Gill Sans") +
+  theme(panel.grid.major = element_line(size = .5, color = "grey"))
+```
+
+Below is a plot in the other direction, the number of times each barcode is seen.
+Most barcodes are uniquely used and are seen only on a single enchancer.
+
+```{r read-per-barcode-plot}
+reads_per_barcode = best_set %>% group_by(barcode) %>% summarize(count=n())
+ggplot(reads_per_barcode, aes(count)) + geom_histogram() + scale_x_sqrt() +
+  ylab("# of enhancers") + xlab("# of barcodes on this many different enhancers") +
+  theme_bw(base_size=12, base_family="Gill Sans") +
+  theme(panel.grid.major = element_line(size = .5, color = "grey"))
+```
+
+Only `r length(unique(best_set$eid))` unique enhancers were recovered during alignment.
+Of those, some had better mapping quality than others:
+
+Some enhancers had better mapping quality than others; mapping quality may be due to
+mistmatches or it also may be to the enhancer mapping equally well to the enhancers
+that were synthesized.
+
+```{r mapq-plot}
+ggplot(best_set, aes(mapq)) + geom_histogram() +
+  theme_bw(base_size=12, base_family="Gill Sans") +
+  theme(panel.grid.major = element_line(size = .5, color = "grey"))
+```
+
+Similarly, there is a spread of number of mismatches of the best hit, with the majority only
+having a small number of mismatches.
+
+```{r mismatch-plot}
+ggplot(best_set, aes(mismatch)) + geom_histogram() +
+  theme_bw(base_size=12, base_family="Gill Sans") +
+  theme(panel.grid.major = element_line(size = .5, color = "grey"))
+```
+
+
+In general mapping quality decreases with the number of mismatches, but there is a range
+at each value.
+
+```{r mismatch-vs-mapq-plot}
+ggplot(best_set, aes(as.factor(mismatch), mapq)) + geom_boxplot() +
+  xlab("# of mismatches") +
+  ylab("mapping quality") +
+  theme_bw(base_size=12, base_family="Gill Sans") +
+  theme(panel.grid.major = element_line(size = .5, color = "grey"))
+```
+
+Mixing the human and mouse sequences is generally a bad plan, the sequences are very similar
+and it is difficult to distinguish them from each other, which is reflected in the range
+of mapping quality values; many of the sequences could have come from multiple different
+enhancer sequences.
+
+Some enhancer sequences don't have a best hit. Here are the enhancer sequences that are missing:
+
+```{r missing-enhancers, results='asis'}
+enhancer_fn = "../metadata/enhancer.tsv"
+enhancers = read.table(enhancer_fn, header=TRUE, stringsAsFactors=FALSE)
+enhancers$seen = enhancers$eid %in% best_set$eid
+out_table = data.frame(table(enhancers$seen))
+colnames(out_table) = c("seen", "count")
+kable(out_table, format="html")
+```
+
+Out of `r nrow(enhancers)` there are `r nrow(missing_eid)` missing and `r nrow(seen_eid)` seen
+enhancers. Here is a breakdown by type, we are missing around 13% of both the endogenous
+and Sliding subtypes across both the human and the mouse.
+
+```{r enhancer-table, results='asis'}
+out_table = data.frame(table(enhancers[, c("subtype", "seen", "species")]))
+colnames(out_table) = c("subtype", "seen", "species", "count")
+kable(out_table, format="html")
+write.table(subset(enhancers, !seen), file="missing_enhancers.csv", quote=FALSE, sep=",",
+  col.names=TRUE, row.names=FALSE)
+```
+
+For enhancers that are seen, for each eid we output the barcode that had the least number
+of mismatches. The vast majority have 0 mismatches:
+
+```{r best-matches-plot}
+best_matches = tbl_df(dat) %>% group_by(eid) %>% filter(mismatch == min(mismatch)) %>% distinct()
+ggplot(best_matches, aes(as.factor(mismatch))) + geom_histogram() +
+  xlab("mismatches") +
+  theme_bw(base_size=12, base_family="Gill Sans") +
+  theme(panel.grid.major = element_line(size = .5, color = "grey"))
+write.table(best_matches, file="best_matches.csv", quote=FALSE, sep=",",
+  col.names=TRUE, row.names=FALSE)
+```
