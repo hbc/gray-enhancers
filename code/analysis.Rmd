@@ -12,7 +12,7 @@ output:
 
 ```{r setup, echo=FALSE}
 knitr::opts_chunk$set(tidy=TRUE, highlight=TRUE, dev="png",
-               cache=TRUE, highlight=TRUE, autodep=TRUE, warning=FALSE, error=FALSE,
+               cache=FALSE, highlight=TRUE, autodep=TRUE, warning=FALSE, error=FALSE,
                message=FALSE, prompt=TRUE, comment='', fig.cap='')
 ```
 
@@ -65,7 +65,11 @@ We'll use only the unique reads, and choose the
 read with the best mapping quality for each non-unique read.
 
 ```{r best-set}
-best_set = tbl_df(dat) %>% group_by(barcode, eid) %>% filter(mapq == max(mapq)) %>% distinct()
+dat$differences = dat$mismatch + dat$insertions + dat$deletions + dat$clipped
+best_set = tbl_df(dat) %>% group_by(barcode, eid) %>% filter(differences == min(differences)) %>% distinct()
+best_set$is_unique = !duplicated(best_set$eid)
+write.table(best_set, file="best_set.csv", quote=FALSE, sep=",",
+  col.names=TRUE, row.names=FALSE)
 save(best_set, file="best_set.RData")
 barcodes = best_set$barcode
 ```
@@ -201,25 +205,25 @@ ggplot(best_set, aes(mapq)) + geom_histogram() +
   theme(panel.grid.major = element_line(size = .5, color = "grey"))
 ```
 
-Similarly, there is a spread of number of mismatches of the best hit, with the majority only
-having a small number of mismatches.
+Similarly, there is a spread of number of differences of the best hit, with the majority only
+having a small number of mismatches. 
 
 ```{r mismatch-plot}
-ggplot(best_set, aes(mismatch)) + geom_histogram() +
-  theme_bw(base_size=12, base_family="Gill Sans") +
+ggplot(best_set, aes(differences)) + geom_histogram() +
+  theme_bw(base_size=12, base_family="Gill Sans") + scale_x_log10() +
   theme(panel.grid.major = element_line(size = .5, color = "grey"))
 ```
 
 
-In general mapping quality decreases with the number of mismatches, but there is a range
-at each value.
+In general, mapping quality decreases with the number of differences with the enhancer sequence, but there is a range at each value.
 
 ```{r mismatch-vs-mapq-plot}
-ggplot(best_set, aes(as.factor(mismatch), mapq)) + geom_boxplot() +
+ggplot(best_set, aes(as.factor(differences), mapq)) + geom_boxplot() +
   xlab("# of mismatches") +
   ylab("mapping quality") +
   theme_bw(base_size=12, base_family="Gill Sans") +
-  theme(panel.grid.major = element_line(size = .5, color = "grey"))
+  theme(panel.grid.major = element_line(size = .5, color = "grey"),
+        axis.ticks = element_blank(), axis.text.x = element_blank())
 ```
 
 Mixing the human and mouse sequences is generally a bad plan, the sequences are very similar
@@ -253,17 +257,15 @@ write.table(subset(enhancers, !seen), file="missing_enhancers.csv", quote=FALSE,
 ```
 
 For enhancers that are seen, for each eid we output the barcode that had the least number
-of mismatches. The vast majority have 0 mismatches:
+of differences. The vast majority have 0 mismatches:
 
 ```{r best-matches-plot}
-best_matches = tbl_df(dat) %>% group_by(eid) %>% filter(mismatch == min(mismatch)) %>% distinct()
-ggplot(best_matches, aes(as.factor(mismatch))) + geom_histogram() +
-  xlab("mismatches") +
+best_matches = tbl_df(dat) %>% group_by(eid) %>% filter(differences == min(differences)) %>% distinct()
+ggplot(best_matches, aes(differences)) + geom_histogram() +
+  xlab("differences") +
   theme_bw(base_size=12, base_family="Gill Sans") +
   theme(panel.grid.major = element_line(size = .5, color = "grey"))
 m = merge(best_matches, enhancers, by=c("eid", "species", "subtype"))
 write.table(m, file="best_matches.csv", quote=FALSE, sep=",",
   col.names=TRUE, row.names=FALSE)
 ```
-
-
