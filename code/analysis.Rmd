@@ -12,7 +12,7 @@ output:
 
 ```{r setup, echo=FALSE}
 knitr::opts_chunk$set(tidy=TRUE, highlight=TRUE, dev="png",
-               cache=FALSE, highlight=TRUE, autodep=TRUE, warning=FALSE, error=FALSE,
+               cache=TRUE, highlight=TRUE, autodep=TRUE, warning=FALSE, error=FALSE,
                message=FALSE, prompt=TRUE, comment='', fig.cap='')
 ```
 
@@ -42,6 +42,7 @@ in_file = "../tsv/TN03_S1_L001_R1_001.enhancer.tsv"
 dat = read.table(in_file, header=TRUE, sep="\t")
 # remove the reads which did not align to an enhancer
 dat = tbl_df(dat[!is.na(dat$eid),])
+sequencing_depth = dat %>% group_by(barcode, eid) %>% summarise(count=n())
 
 nreads = nrow(dat)
 unique_barcodes = unique(dat$barcode)
@@ -51,15 +52,59 @@ unique_reads = unique(dat[, c("barcode", "eid")])
 
 There are `r nreads` total reads, with `r nrow(unique_reads)` unique reads. By
 unique reads we mean reads that do not have the same barcode and map best to the
-same enhancer sequence. Of the `r nrow(unique_reads)` there are `r length(unique(unique_reads$barcode))` unique barcodes represented. Most barcodes were seen just once, but there is a small
-set that were seen hundreds of times:
+same enhancer sequence. Of the `r nrow(unique_reads)` there are `r length(unique(unique_reads$barcode))` unique barcodes represented. 
 
-```{r depth-per-barcode}
-sequencing_depth = dat %>% group_by(barcode, eid) %>% summarise(count=n())
-ggplot(sequencing_depth, aes(count)) + geom_histogram() + scale_x_log10() +
+
+Previous work looking at random barcoding of sequences has shown that the barcodes with 
+only one read of evidence for them tend to be sequencing errors:
+
+[](images/barcode-errors.png)
+
+It looks like we can dump barcodes that only appear a small number of times, not just 1.
+```{r depth-ber-just-barcode}
+detach("package:dplyr")
+library(dplyr)
+grouped = dat %>% group_by(barcode) %>% summarise(count=n())
+ggplot(grouped, aes(count)) + geom_histogram() + scale_x_log10() +
   theme_bw(base_size=12, base_family="Gill Sans") +
   theme(panel.grid.major = element_line(size = .5, color = "grey"))
 ```
+
+We start with `r nrow(grouped)` unique barcodes.
+So we'll dump those barcodes that appear less than four times as sequencing errors in the
+barcode.
+
+```{r dump-likely-erroneous-barcodes}
+dat = dat %>% group_by(barcode) %>% filter(n() > 4) %>% ungroup()
+grouped = dat %>% group_by(barcode) %>% summarise(count=n())
+ggplot(grouped, aes(count)) + geom_histogram() + scale_x_log10() +
+  theme_bw(base_size=12, base_family="Gill Sans") +
+  theme(panel.grid.major = element_line(size = .5, color = "grey"))
+```
+
+This leaves us with `r nrow(dat)` total reads to work with and `r nrow(grouped)` barcodes.
+If we further restrict and
+look at the number of eid + barcode for each barcode, we can identify another set of
+likely-erroneous barcode + eid combinations to remove:
+
+```{r depth-per-eid-and-barcode}
+likely_erroneous = dat %>% group_by(barcode, eid) %>% summarise(count=n())
+ggplot(likely_erroneous, aes(count)) + geom_histogram() + scale_x_log10() +
+  theme_bw(base_size=12, base_family="Gill Sans") +
+  theme(panel.grid.major = element_line(size = .5, color = "grey"))
+```
+
+```{r depth-per-eid-and-barcode-filtered}
+dat = dat %>% group_by(barcode, eid) %>% filter(n() > 2) 
+filtered_depth = dat %>% group_by(barcode, eid) %>% summarise(count=n())
+ggplot(filtered_depth, aes(count)) + geom_histogram() + scale_x_log10() +
+  theme_bw(base_size=12, base_family="Gill Sans") +
+  theme(panel.grid.major = element_line(size = .5, color = "grey"))
+```
+ 
+This leaves us with `r nrow(dat)` total reads to work with and `r nrow(sequencing_depth)`
+unique barcodes + eid to work with. There are `r length(unique(dat$barcode))` unique barcodes
+and `r length(unique(dat$eid))` unique EIDs detected.
 
 We'll use only the unique reads, and choose the
 read with the best mapping quality for each non-unique read.
