@@ -2,9 +2,8 @@ from argparse import ArgumentParser
 from bcbio.bam import open_samfile
 import pysam
 
-
-OUT_HEADER = ["id", "barcode", "eid", "species", "subtype", "mismatch", "mapq", "as", "xs", 
-              "clipped", "insertions", "deletions", "matched", "other"]
+OUT_HEADER = ["id", "barcode", "eid", "species", "subtype", "mismatch", "mapq", "as", "xs",
+              "clipped", "insertions", "deletions", "matched", "other", "seq"]
 
 def parse_cigar_tuples(tuples):
     d = {"insertions": 0,
@@ -35,6 +34,10 @@ if __name__ == "__main__":
 
     with open_samfile(args.BAM) as in_file:
         for read in in_file:
+	    if read.is_paired and not read.is_read1:
+		continue
+	    if not read.cigar:
+		continue
             barcode, number = read.qname.split("-")
             mapq = int(read.mapq)
             try:
@@ -65,6 +68,7 @@ if __name__ == "__main__":
             deletions = cigar["deletions"]
             matched = cigar["matched"]
             other = cigar["other"]
-            out_line = map(str, [number, barcode, eid, species, subtype, mismatch, mapq, AS, XS, 
-                                 clipped, insertions, deletions, matched, other])
+	    seq = read.seq
+            out_line = map(str, [number, barcode, eid, species, subtype, mismatch, mapq, AS, XS,
+                                 clipped, insertions, deletions, matched, other, seq])
             print "\t".join(out_line)
