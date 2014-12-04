@@ -3,8 +3,8 @@ import re
 from argparse import ArgumentParser
 from bcbio.distributed.transaction import file_transaction
 from bcbio.utils import file_exists
-from Bio import SeqIO
-from itertools import izip
+from Bio import SeqIO, pairwise2
+from itertools import izip, takewhile
 
 DEFAULT_FORMAT = "fastq-sanger"
 LEFT_ADAPTER_SEQUENCE = "TGAGGAGCCGCAGTG"
@@ -15,10 +15,21 @@ def find_sequence_index(seq, adapter):
     """
     if the read is missing the adapter sequence, then drop it
     """
-    adapter_idx = [m.start() for m in re.finditer(adapter, str(seq))] 
+    # first alignment is best alignment
+    alignment = pairwise2.align.localxs(adapter, seq, -1, -0.1)[0]
+    adapter_idx = start_from_alignment(alignment)
     if not adapter_idx:
         return None
-    return adapter_idx[0]
+    return adapter_idx
+
+def start_from_alignment(alignment):
+    if not alignment:
+        return None
+    # if the alignment is poor, skip it (there is a gap or two mismatches)
+    # 14 = two mismatches or 1 gap with our parameters
+    if alignment[2] < 14:
+        return None
+    return alignment[3]
 
 def partition_read1(seq):
     left_adapter_idx = find_sequence_index(seq, LEFT_ADAPTER_SEQUENCE)
