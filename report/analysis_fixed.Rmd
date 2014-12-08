@@ -123,7 +123,7 @@ score of the primary and secondary alignments to identify alignments that
 are identical.
 
 ```{r identifical-alignment-counts}
-cleaned = dat[, 2:ncol(dat)] %>% group_by(barcode, eid, differences, mapq, as, xs) %>%
+cleaned = dat[, 2:ncol(dat)] %>% group_by(barcode, eid, differences, mapq, as, xs, seq) %>%
   mutate(count = n()) %>% ungroup() %>% distinct()
 ggplot(cleaned, aes(count)) + geom_histogram() + scale_x_log10() +
   theme_bw(base_size=12, base_family="Gill Sans") +
@@ -155,7 +155,7 @@ So another useful filtering is to take only the barcode+eid that we have seen th
 will call this the true sequence going forward.
 
 ```{r best-set}
-clean = cleaned %>% group_by(barcode, eid) %>% filter(count==max(count)) %>% ungroup()
+clean = cleaned %>% group_by(barcode, eid, seq) %>% filter(count==max(count)) %>% ungroup()
 ```
 
 Now we can break down what these look like.
@@ -280,5 +280,70 @@ identical reads. The consensus sequence that generated the best hit is in the se
 column of the table.
 
 ```{r write-clean}
-write.table(clean, file="clean.tsv", quote=FALSE, sep=",", col.names=TRUE, row.names=FALSE)
+write.table(clean, file="clean.csv", quote=FALSE, sep=",", col.names=TRUE, row.names=FALSE)
 ```
+
+## How did we do recovering the highly expressed barcodes?
+These are cDNA counts from two replicates of two conditions, sequencing from plasmid
+DNA. I'm not too clear on where this data came from; is it a similar type of experiment? 
+
+```{r read-bc-data}
+bc_file = "../metadata/TN03/TN03_MiSeq_tallies_raw_bcs.tsv"
+cdna_bc = read.table(bc_file, sep="\t", header=TRUE)
+rownames(cdna_bc) = cdna_bc$bc
+rownames(cdna_bc) = as.factor(rownames(cdna_bc))
+cdna_bc$bc = NULL
+```
+
+This has `r nrow(cdna_bc)` barcodes, we are only picking up about 210k barcodes so we
+are only getting about half of the data. A bunch of these barcodes have very low counts,
+only appearing a small number of times in some conditions.
+
+```{r bc-data-plot}
+qplot(rowSums(cdna_bc)) + geom_histogram() +
+  theme_bw(base_size=12, base_family="Gill Sans") + scale_x_log10() + 
+  theme(panel.grid.major = element_line(size = .5, color = "grey"))
+```
+
+These might be errors, we can do something similar as we did above and drop barcodes that
+appear < 3 times.
+
+```{r subset-cdna-barcodes}
+cdna_bc = subset(cdna_bc, rowSums(cdna_bc) >=3)
+high_bc = subset(cdna_bc, rowSums(cdna_bc) >=100)
+```
+
+That leaves us with `r nrow(cdna_bc)` and puts us closer to the `r nrow(clean)`
+barcodes we recover from this experiment. In the original, non-cleaned dataset we
+are missing `r nrow(cdna_bc) - sum(rownames(cdna_bc) %in% dat$barcode)` out of
+`r nrow(cdna_bc)` barcodes.
+If we restruct this to barcodes with total counts > 100 then we 
+are missing `r nrow(high_bc) - sum(rownames(high_bc) %in% dat$barcode)` out of `r nrow(high_bc)`
+barcodes. k
+
+Why are we missing these still? It depends on the barcode. For example TTTGCGTTCGTGCGTT is missing,
+but only appears a small number of times in the reads, and most of the time it is a very short sequence. Only one read was long enough to have a real enhancer sequence in it.
+
+barcode AAAACTATCGTTTGAG is highly expessed in the cDNA data and has many reads with that
+sequence in it. It has a lot of reads that all match the barcode and both of the adapter sequences match. The enhancer sequence looks fine:
+
+GAGCCGTGGACTTCGGCGAAGCGACCACAACAACAACGGAGGCGGCGGCGGCAGCGACGACTACTCCACAGGCGGGACTTCCGGCTGCCGGAGCCTAGCAACCTCCCGGGGCGGGGCTTCCGGCGGGCCTGGTAAGAG
+
+This barcode appears many times in the original TSV file:
+
+```{r missing-barcode}
+subset(dat, barcode == "AAAACTATCGTTTGAG")
+```
+
+So what is the deal, why are we missing it?
+
+The enhancer sequence doesn't have a full length match to any
+particular sequence. The GC content is high, 70%. There is a lot of
+sequencing errors in this enhancer sequence and there are only 32
+reads, and it just happens that none of them are repeated more than
+twice, even though we know what enhancer the sequence is for, we don't have enough
+evidence to call the actual sequence that way we are doing it.
+
+To rescue these types of reads, we'd have to do something like call a consensus sequence and
+then realign. But since we are missing 4,000 barcodes right from the start, this would at most
+fix the 1.5k or so that are filtered out by the cleaning process.
