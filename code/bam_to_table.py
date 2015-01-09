@@ -147,6 +147,10 @@ def bam_to_tab(in_file):
         for read in in_file:
             if not read.is_read1:
                 continue
+            if read.is_secondary:
+                continue
+            if read.is_unmapped:
+                continue
             if not read.cigar:
                 continue
             mate = in_file.next()
