@@ -114,6 +114,7 @@ This leaves us with `r nrow(dat)` total alignments to work with and `r nrow(sequ
 unique barcodes + eid to work with. There are `r length(unique(dat$barcode))` unique barcodes
 and `r length(unique(dat$eid))` unique EIDs detected.
 
+
 After that initial cleaning, we have a table *dat* which is a set of
 `r nrow(dat)` alignments where we have removed alignments where we
 thought it was pretty likely the barcode was wrong due to a sequencing
@@ -187,7 +188,7 @@ Those are represented by `r length(unique(clean$barcode))` barcodes and
 to the enhancer sequences, representing 6884 distinct enhancer sequences.
 
 
-Each enhancer sequence is represented multiple by multiple barcodes:
+Each enhancer sequence is represented by multiple barcodes:
 
 ```{r reads-per-eid-plot}
 reads_per_eid = clean %>% group_by(eid) %>% summarise(count=n())
