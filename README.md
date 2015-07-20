@@ -17,19 +17,14 @@ python single_bam_to_table.py alignments.sam
 this assumes the enhancer sequences are named in a certain way
 single_bam_to_table.py does
 
-here are all the steps you need to do once you have the indexed enhancers to align to
+here is an example script
 
-#!/bin/sh
-#BSUB -u rory.kirchner@gmail.com
-#BSUB -J bwa-aln
-#BSUB -o bwa-aln.out
-#BSUB -e bwa-aln.err
-#BSUB -W 5:00
-#BSUB -n 6
-#BSUB -q mcore
-#bwa mem -t 6 metadata/TN03_newstrategy_trimmed.fa data/TN05_S1_L001_R1_001.fastq > align/TN05_L001_R1_001.sam
-#samtools view -bS align/TN05_L001_R1_001.sam > align/TN05_L001_R1_001.bam
-#python ../code/single_bam_to_table.py align/TN05_L001_R1_001.sam > align/TN05_L001_R1.table
-samtools sort align/TN05_L001_R1_001.bam TN05.sorted
+infile=data/TN05_S1_L001_R1_001.fastq
+prefix=TN05
+out_dir=new-data
+enhancers=metadata/TN03_newstrategy_trimmed.fa
 
-then run analysis_fixed.Rmd on it
+mkdir -p out-dir
+bwa mem -t 6 $enhancers $infile > $out_dir/$prefix.sam
+python ../code/single_bam_to_table.py $out_dir/$prefix.sam
+then run analysis_fixed.Rmd on the file in $out_dir/$prefix.tsv file.
