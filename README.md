@@ -6,7 +6,8 @@ http://htmlpreview.github.io/?https://github.com/hbc/gray-enhancers/blob/master/
 
 
 ## How to run
-1) Create a FASTA file of the enhancer sequences, enhancers.fa
+1) Create a FASTA file of the enhancer sequences, enhancers.fa. The names of the
+   sequences should not have any spaces in them.
 2) index the sequence with bwa: bwa index enhancers.fa
 3) stick barcode in the read name with: python ../code/clean_read.py sequences.fq
 3) align sequences with bwa mem: bwa mem -t number-of-threads enhancers.fa sequences.enhancers.fq > alignments.sam
