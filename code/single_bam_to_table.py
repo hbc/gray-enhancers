@@ -6,8 +6,9 @@ import toolz as tz
 import sys
 
 
-OUT_HEADER = ["id", "barcode", "eid", "species", "subtype", "mismatch", "mapq", "as", "xs",
-              "clipped", "insertions", "deletions", "matched", "other", "seq"]
+OUT_HEADER = ["id", "ename", "barcode", "eid", "species", "subtype", "mismatch",
+              "mapq", "as", "xs", "clipped", "insertions", "deletions",
+              "matched", "other", "seq"]
 
 def open_samfile(in_file):
     if is_bam(in_file):
@@ -194,8 +195,9 @@ def bam_to_tab(in_file):
             matched = cigar["matched"]
             other = cigar["other"]
             seq = str(read.seq)
-            out_line = map(str, [number, barcode, eid, species, subtype, mismatch, mapq, AS, XS,
-                                 clipped, insertions, deletions, matched, other, seq])
+            out_line = map(str, [number, ename, barcode, eid, species, subtype,
+                                 mismatch, mapq, AS, XS, clipped, insertions,
+                                 deletions, matched, other, seq])
             out_string = "\t".join(out_line)
             print >>out_handle, out_string
     print >>sys.stdout, "Total pairs processed: %d" % pairs_processed
