@@ -1,10 +1,14 @@
 import os
-import re
 from argparse import ArgumentParser
-from bcbio.distributed.transaction import file_transaction
-from bcbio.utils import file_exists
 from Bio import SeqIO, pairwise2
-from itertools import izip, takewhile
+
+def file_exists(fname):
+    """Check if a file exists and is non-empty.
+    """
+    try:
+        return fname and os.path.exists(fname) and os.path.getsize(fname) > 0
+    except OSError:
+        return False
 
 DEFAULT_FORMAT = "fastq-sanger"
 LEFT_ADAPTER_SEQUENCE = "TGAGGAGCCGCAGTG"
@@ -54,20 +58,19 @@ def partition_reads(fastq_file_1):
     skipped_missing_constant_seqs = 0
     kept = 0
 
-    with file_transaction(enhancer_fq_1) as tx_out_file:
-        with open(tx_out_file, "w") as fq_handle_1:
-            for read in in_handle_1:
-                read_number += 1
-                if len(read) < 187:
-                    skipped_too_short += 1
-                    continue
-                barcode, idx = partition_read1(read.seq)
-                if not barcode or not idx:
-                    skipped_missing_constant_seqs += 1
-                    continue
-                kept += 1
-                read.id = "{barcode}-{read_number}".format(**locals())
-                fq_handle_1.write(str(read[idx[0]:idx[1]].__format__("fastq-sanger")))
+    with open(enhancer_fq_1, "w") as fq_handle_1:
+        for read in in_handle_1:
+            read_number += 1
+            if len(read) < 187:
+                skipped_too_short += 1
+                continue
+            barcode, idx = partition_read1(read.seq)
+            if not barcode or not idx:
+                skipped_missing_constant_seqs += 1
+                continue
+            kept += 1
+            read.id = "{barcode}-{read_number}".format(**locals())
+            fq_handle_1.write(str(read[idx[0]:idx[1]].__format__("fastq-sanger")))
 
     print "Reads proccessed: %s." % read_number
     print "Reads skipped for being too short: %s." % skipped_too_short
