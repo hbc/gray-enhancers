@@ -1,0 +1,143 @@
+---
+  html_document:
+    toc: true
+    highlight: zenburn
+    theme: united
+---
+
+```{r setup, echo=FALSE}
+knitr::opts_chunk$set(tidy=TRUE, highlight=TRUE, dev="png",
+               cache=TRUE, highlight=TRUE, autodep=TRUE, warning=FALSE, error=FALSE,
+               message=FALSE, prompt=TRUE, comment='', fig.cap='')
+```
+
+## Background information
+This project is from Jesse Gray's lab, they are interested in looking at the
+composition of the enhancer sequences they had synthesized and stuck into some
+viral vectors. This is a second set of enhancer sequences they created;
+unlike the first set we are missing some barcode sequences.
+
+To get to this table, we did took the enhancer sequences and trimmed off
+the beginning and trailing bases. Then we made a bwa index of those
+enhancer sequences and aligned the query sequences to them and generated this
+table:
+
+> infile=data/TN05_S1_L001_R1_001.fastq
+> prefix=TN05
+> out_dir=new-data
+> enhancers=metadata/TN03_newstrategy_trimmed.fa
+>
+> mkdir -p out-dir
+> bwa mem -t 6 $enhancers $infile > $out_dir/$prefix.sam
+> python ../code/single_bam_to_table.py $out_dir/$prefix.sam
+
+As a first iteration, we did something super simple to get to this
+point, we took the enhancer fragments and made a bwa database, then
+aligned the reads to those. Before aligning the reads we stuck the
+barcode for each read in the read name, so we could figure out which
+barcode was associated with an alignment. Then we parsed the alignment
+file to dump which enhancer sequence it aligned to, along with the
+barcode that was used and some numbers about mapping quality and
+number of mismatches along with the sequence that was sequenced. The code to do all of this,
+and this report, is up on github [here](https://github.com/hbc/gray-enhancers).
+
+The resulting file is pretty big, we spent some time messing around loading it
+ into a SQLite and then a Postgres database, but that kept us from working with
+dplyr on the data. The ultimate solution was to just bite the bullet and load
+everything in, filtering it and writing the data out so we can just load
+the filtered set.
+
+The filtered set collapsed all of the same barcode + enhancer pairs into one,
+with an added column nalignments that is the number of alignments of support
+for that barcode + enhancer. The specific alignment kept for each barcode +
+enhancer pair was the one with the highest mapping quality and we only kept
+barcode + enhancer pairs with at least five alignments of evidence.
+
+```{r read-data}
+library(dplyr)
+library(readr)
+dat = read_delim("TN05_mapped.tsv", delim="\t") %>%
+  group_by(barcode, ename) %>%
+          mutate(nalignments = n()) %>%
+          filter(nalignments > 5) %>%
+          filter(mapq == max(mapq)) %>%
+          do(head(., 1))
+save(dat, file="enhancers.RData")
+```
+
+Now we can just read the small data file and force the garbage collection to
+run to free up the memory we used:
+
+```{r read-data-file}
+load("enhancers.RData")
+gc()
+```
+
+This is a much smaller set to work with, and we didn't lose much information.
+
+Most barcode-enhancer pairs have hundreds of alignments. We can see an uptick
+in rare barcode-enhancer pairs with less than ten alignments, those are likely
+sequencing errors in the barcode or other confused mappings.
+
+```{r alignment-distribution}
+library(ggplot2)
+ggplot(dat, aes(nalignments, color=mapq)) + geom_density() +
+    theme_bw(base_size=10) +
+    theme(panel.grid.major = element_line(size = .5, color = "grey")) +
+    xlab("number of alignments") +
+    ylab("barcodes-enhancer pairs") + scale_x_log10()
+```
+
+Mapping quality has peaks around 10, 20 and 60.
+
+```{r quality-peaks}
+ggplot(dat, aes(mapq)) + geom_histogram() +
+    theme_bw(base_size=10) +
+    theme(panel.grid.major = element_line(size = .5, color = "grey"))
+```
+
+Here we check to see if barcode-enhancer pairs with few alignments also have lower
+quality alignments; looks like that is not hte case.
+
+```{r alignment-distribution-by-quality}
+dat$quality <- ifelse(dat$mapq >= 60, "high", ifelse(dat$mapq < 60 & dat$mapq >= 20,
+                                                     "medium", "low"))
+ggplot(dat, aes(nalignments, fill=quality)) + geom_histogram() +
+    theme_bw(base_size=10) +
+    theme(panel.grid.major = element_line(size = .5, color = "grey")) +
+    xlab("number of alignments") +
+    ylab("barcodes-enhancer pairs") + scale_x_log10()
+```
+
+Some barcodes align to multiple enhancers:
+
+```{r confused-barcodes}
+ggplot(dat %>% group_by(barcode) %>% summarise(enhancers=n()), aes(enhancers)) +
+    geom_histogram() +
+    theme_bw(base_size=10) +
+    theme(panel.grid.major = element_line(size = .5, color = "grey")) +
+    scale_y_sqrt()
+```
+
+We will drop these since we don't know which enhancer they go to.
+
+```{r drop-confused-barcodes}
+dat = dat %>% group_by(barcode) %>% filter(n() == 1)
+```
+
+Enhancers have on average 100 different barcodes covering them:
+
+```{r enhancer-coverage}
+ggplot(dat %>% group_by(ename) %>% summarise(barcodes=n()), aes(barcodes)) +
+    geom_histogram() +
+    theme_bw(base_size=10) +
+    theme(panel.grid.major = element_line(size = .5, color = "grey")) +
+    scale_y_sqrt() + scale_x_log10() + ylab("enhancers")
+```
+
+We'll write out this cleaned key now, dropping the nonsense columns.
+
+```{r clean-output}
+drop_cols = c("eid", "species", "subtype")
+write.table(dat[, !colnames(dat) %in% drop_cols], file="TN05_cleaned.csv", sep=",", quote=FALSE, col.names=TRUE, row.names=FALSE)
+```
