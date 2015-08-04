@@ -10,11 +10,6 @@ def file_exists(fname):
     except OSError:
         return False
 
-DEFAULT_FORMAT = "fastq-sanger"
-LEFT_ADAPTER_SEQUENCE = "TGAGGAGCCGCAGTG"
-RIGHT_ADAPTER_SEQUENCE = "CAGTGAAGCGGCCAG"
-RESTRICTION_SITE = "TCTAGAGGTACC"
-
 def find_sequence_index(seq, adapter):
     """
     if the read is missing the adapter sequence, then drop it
@@ -35,18 +30,19 @@ def start_from_alignment(alignment, adapter_length):
         return None
     return alignment[3]
 
-def partition_read1(seq):
-    left_adapter_idx = find_sequence_index(seq, LEFT_ADAPTER_SEQUENCE)
-    right_adapter_idx = find_sequence_index(seq, RIGHT_ADAPTER_SEQUENCE)
-    restriction_idx = find_sequence_index(seq, RESTRICTION_SITE)
+def partition_read1(seq, args):
+    left_adapter_idx = find_sequence_index(seq, args.left_adapter)
+    right_adapter_idx = find_sequence_index(seq, args.right_adapter)
+    restriction_idx = find_sequence_index(seq, args.restriction)
     if not all([left_adapter_idx, right_adapter_idx, restriction_idx]):
         return None, None
     if restriction_idx < 16:
         return None, None
     barcode = seq[restriction_idx-16:restriction_idx]
-    return barcode, (left_adapter_idx, right_adapter_idx + len(RIGHT_ADAPTER_SEQUENCE))
+    return barcode, (left_adapter_idx, right_adapter_idx + len(args.right_adapter))
 
-def partition_reads(fastq_file_1):
+def partition_reads(args):
+    fastq_file_1 = args.fastq1
     base_1, ext_1 = os.path.splitext(fastq_file_1)
     read_number = 0
     in_handle_1 = SeqIO.parse(fastq_file_1, "fastq-sanger")
@@ -61,12 +57,12 @@ def partition_reads(fastq_file_1):
     with open(enhancer_fq_1, "w") as fq_handle_1:
         for read in in_handle_1:
             read_number += 1
-            if read_number % 100000:
+            if read_number % 100 == 0:
                 print "Processed %d reads." % read_number
             if len(read) < 187:
                 skipped_too_short += 1
                 continue
-            barcode, idx = partition_read1(read.seq)
+            barcode, idx = partition_read1(read.seq, args)
             if not barcode or not idx:
                 skipped_missing_constant_seqs += 1
                 continue
@@ -84,7 +80,9 @@ def partition_reads(fastq_file_1):
 if __name__ == "__main__":
     parser = ArgumentParser()
     parser.add_argument("fastq1", help="Read 1 of lane to parse.")
-
+    parser.add_argument("--left-adapter", default="TGAGGAGCCGCAGTG")
+    parser.add_argument("--right-adapter", default="CAGTGAAGCGGCCAG")
+    parser.add_argument("--restriction", default="TCTAGAGGTACC")
     args = parser.parse_args()
 
-    partition_reads(args.fastq1)
+    partition_reads(args)
