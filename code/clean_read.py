@@ -21,17 +21,17 @@ def find_sequence_index(seq, adapter):
     """
     # first alignment is best alignment
     alignment = pairwise2.align.localxs(adapter, seq, -1, -0.1)[0]
-    adapter_idx = start_from_alignment(alignment)
+    adapter_idx = start_from_alignment(alignment, len(adapter))
     if not adapter_idx:
         return None
     return adapter_idx
 
-def start_from_alignment(alignment):
+def start_from_alignment(alignment, adapter_length):
     if not alignment:
         return None
     # if the alignment is poor, skip it (there is a gap or two mismatches)
     # 14 = two mismatches or 1 gap with our parameters
-    if alignment[2] < 14:
+    if alignment[2] < (adapter_length - 2):
         return None
     return alignment[3]
 
