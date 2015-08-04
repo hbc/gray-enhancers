@@ -1,3 +1,4 @@
+import re
 import os
 from argparse import ArgumentParser
 from Bio import SeqIO, pairwise2
@@ -10,13 +11,18 @@ def file_exists(fname):
     except OSError:
         return False
 
-def find_sequence_index(seq, adapter):
+def find_sequence_index(seq, adapter, align=True):
     """
     if the read is missing the adapter sequence, then drop it
     """
     # first alignment is best alignment
-    alignment = pairwise2.align.localxs(adapter, seq, -1, -0.1)[0]
-    adapter_idx = start_from_alignment(alignment, len(adapter))
+    if align:
+        alignment = pairwise2.align.localxs(adapter, seq, -1, -0.1)[0]
+        adapter_idx = start_from_alignment(alignment, len(adapter))
+    else:
+        adapter_idx = [m.start() for m in re.finditer(adapter, str(seq))]
+	if adapter_idx:
+	    adapter_idx = adapter_idx[0]
     if not adapter_idx:
         return None
     return adapter_idx
@@ -31,9 +37,9 @@ def start_from_alignment(alignment, adapter_length):
     return alignment[3]
 
 def partition_read1(seq, args):
-    left_adapter_idx = find_sequence_index(seq, args.left_adapter)
-    right_adapter_idx = find_sequence_index(seq, args.right_adapter)
-    restriction_idx = find_sequence_index(seq, args.restriction)
+    left_adapter_idx = find_sequence_index(seq, args.left_adapter, args.align)
+    right_adapter_idx = find_sequence_index(seq, args.right_adapter, args.align)
+    restriction_idx = find_sequence_index(seq, args.restriction, args.align)
     if not all([left_adapter_idx, right_adapter_idx, restriction_idx]):
         return None, None
     if restriction_idx < 16:
@@ -79,6 +85,8 @@ def partition_reads(args):
 
 if __name__ == "__main__":
     parser = ArgumentParser()
+    parser.add_argument("--align", default=False, action="store_true", 
+                        help="turn on local alignment (very slow)")
     parser.add_argument("fastq1", help="Read 1 of lane to parse.")
     parser.add_argument("--left-adapter", default="TGAGGAGCCGCAGTG")
     parser.add_argument("--right-adapter", default="CAGTGAAGCGGCCAG")
