@@ -61,6 +61,8 @@ def partition_reads(fastq_file_1):
     with open(enhancer_fq_1, "w") as fq_handle_1:
         for read in in_handle_1:
             read_number += 1
+            if read_number % 100000:
+                print "Processed %d reads." % read_number
             if len(read) < 187:
                 skipped_too_short += 1
                 continue
