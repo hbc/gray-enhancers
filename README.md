@@ -44,9 +44,6 @@ step.
 python bam_to_table.py alignments.sam
 5) load into analysis_fixed.Rmd
 
-## assumptions of the code
-this assumes the enhancer sequences are named in a certain way
-
 ## example analysis
 ```bash
 infile=data/TN05_S1_L001_R1_001.fastq
@@ -61,4 +58,12 @@ bwa mem -t 6 $enhancers $cleaned > $out_dir/$prefix.sam
 python ../code/bam_to_table.py $out_dir/$prefix.sam
 ```
 
+You can use this table to do a more in depth analysis.
+The file analysis_fixed.Rmd has an example,
+
 then run analysis_fixed.Rmd on the file in $out_dir/$prefix.tsv file.
+
+## help
+If you'd like to use this idea to do a similar experiment and these aren't
+working for you post an issue and we'll work with you to get something
+that will work with your data.
